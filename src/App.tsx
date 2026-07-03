@@ -679,6 +679,24 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     return centers.reduce((sum, centerX) => sum + centerX, 0) / centers.length
   }
 
+  const getChildAnchorXsForGroup = (group: FamilyGroup) => {
+    const parentMemberIds = new Set(group.members.map((member) => member.id))
+
+    return [...(childGroupIdsByGroup.get(group.id) ?? [])]
+      .map((childGroupId) => groups.get(childGroupId))
+      .filter((childGroup): childGroup is FamilyGroup => childGroup !== undefined)
+      .flatMap((childGroup) =>
+        childGroup.members
+          .filter((member) => {
+            const parentIds = parentsByChild.get(member.id) ?? []
+            return parentIds.length > 0 && parentIds.every((parentId) => parentMemberIds.has(parentId))
+          })
+          .map((member) => getPersonCenterX(member.id))
+          .filter((centerX): centerX is number => centerX !== null),
+      )
+      .sort((left, right) => left - right)
+  }
+
   const groupsByDepth = new Map<number, FamilyGroup[]>()
   let maxDepth = 0
 
@@ -767,20 +785,11 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     let cursorX = PADDING_X
 
     for (const group of row) {
-      const childGroups = [...(childGroupIdsByGroup.get(group.id) ?? [])]
-        .map((childGroupId) => groups.get(childGroupId))
-        .filter(
-          (childGroup): childGroup is FamilyGroup =>
-            childGroup !== undefined && childGroup.depth === group.depth + 1,
-        )
-        .sort((left, right) => left.x - right.x)
-
+      const childAnchorXs = getChildAnchorXsForGroup(group)
       const desiredCenter =
-        childGroups.length === 0
+        childAnchorXs.length === 0
           ? group.centerX
-          : (Math.min(...childGroups.map((childGroup) => childGroup.x)) +
-              Math.max(...childGroups.map((childGroup) => childGroup.x + childGroup.width))) /
-            2
+          : (childAnchorXs[0] + childAnchorXs[childAnchorXs.length - 1]) / 2
       const desiredX = desiredCenter - group.width / 2
 
       group.x = Math.max(cursorX, desiredX)
