@@ -75,6 +75,16 @@ type FamilyGroup = {
   parentIds: string[]
 }
 
+type FamilyUnit = {
+  id: string
+  depth: number
+  parentIds: string[]
+  groups: FamilyGroup[]
+  width: number
+  subtreeWidth: number
+  sortValue: number
+}
+
 type ImportableProject = Partial<FamilyProject> & {
   people?: unknown
   relations?: unknown
@@ -89,7 +99,6 @@ const SPOUSE_GAP = 30
 const GROUP_GAP = 90
 const PADDING_X = 120
 const PADDING_Y = 160
-const LAYOUT_RELAX_PASSES = 3
 
 const createId = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 10)}`
@@ -634,19 +643,12 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     group.parentIds = parentIds
   }
 
-  const childGroupIdsByGroup = new Map<string, Set<string>>()
-  for (const group of groups.values()) {
-    childGroupIdsByGroup.set(group.id, new Set())
-  }
-
-  for (const group of groups.values()) {
-    for (const parentId of group.parentIds) {
-      const parentGroupId = groupIdByPerson.get(parentId)
-      if (parentGroupId && parentGroupId !== group.id) {
-        childGroupIdsByGroup.get(parentGroupId)?.add(group.id)
-      }
-    }
-  }
+  const memberIdsByGroup = new Map(
+    Array.from(groups.values()).map((group) => [
+      group.id,
+      new Set(group.members.map((member) => member.id)),
+    ]),
+  )
 
   const getPersonCenterX = (personId: string) => {
     const groupId = groupIdByPerson.get(personId)
@@ -667,150 +669,212 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     return group.x + personIndex * (CARD_WIDTH + SPOUSE_GAP) + CARD_WIDTH / 2
   }
 
-  const getParentAnchorX = (parentIds: string[]) => {
-    const centers = parentIds
-      .map((parentId) => getPersonCenterX(parentId))
-      .filter((centerX): centerX is number => centerX !== null)
-
-    if (centers.length === 0) {
-      return null
-    }
-
-    return centers.reduce((sum, centerX) => sum + centerX, 0) / centers.length
-  }
-
-  const getChildAnchorXsForGroup = (group: FamilyGroup) => {
-    const parentMemberIds = new Set(group.members.map((member) => member.id))
-
-    return [...(childGroupIdsByGroup.get(group.id) ?? [])]
-      .map((childGroupId) => groups.get(childGroupId))
-      .filter((childGroup): childGroup is FamilyGroup => childGroup !== undefined)
-      .flatMap((childGroup) =>
-        childGroup.members
-          .filter((member) => {
-            const parentIds = parentsByChild.get(member.id) ?? []
-            return parentIds.length > 0 && parentIds.every((parentId) => parentMemberIds.has(parentId))
-          })
-          .map((member) => getPersonCenterX(member.id))
-          .filter((centerX): centerX is number => centerX !== null),
-      )
-      .sort((left, right) => left - right)
-  }
-
-  const groupsByDepth = new Map<number, FamilyGroup[]>()
-  let maxDepth = 0
+  const units = new Map<string, FamilyUnit>()
+  const childUnitIdsByGroup = new Map<string, string[]>()
 
   for (const group of groups.values()) {
-    maxDepth = Math.max(maxDepth, group.depth)
-    const row = groupsByDepth.get(group.depth) ?? []
-    row.push(group)
-    groupsByDepth.set(group.depth, row)
+    childUnitIdsByGroup.set(group.id, [])
+
+    if (group.parentIds.length === 0) {
+      continue
+    }
+
+    const unitId = `unit:${group.depth}:${group.parentIds.join('|')}`
+    const existing = units.get(unitId)
+    if (existing) {
+      existing.groups.push(group)
+      existing.sortValue = Math.min(existing.sortValue, group.sortValue)
+    } else {
+      units.set(unitId, {
+        id: unitId,
+        depth: group.depth,
+        parentIds: [...group.parentIds],
+        groups: [group],
+        width: 0,
+        subtreeWidth: 0,
+        sortValue: group.sortValue,
+      })
+    }
   }
 
-  const sortRowByParentAnchor = (row: FamilyGroup[]) => {
-    row.sort((left, right) => {
-      const leftAnchor =
-        left.parentIds.length === 0
-          ? left.sortValue
-          : getParentAnchorX(left.parentIds) ?? left.sortValue
+  for (const unit of units.values()) {
+    unit.groups.sort((left, right) => left.sortValue - right.sortValue)
+    unit.width =
+      unit.groups.reduce((sum, group) => sum + group.width, 0) +
+      Math.max(0, unit.groups.length - 1) * GROUP_GAP
 
-      const rightAnchor =
-        right.parentIds.length === 0
-          ? right.sortValue
-          : getParentAnchorX(right.parentIds) ?? right.sortValue
+    const parentGroup = Array.from(groups.values()).find(
+      (group) =>
+        group.depth === unit.depth - 1 &&
+        unit.parentIds.every((parentId) => memberIdsByGroup.get(group.id)?.has(parentId)),
+    )
 
+    if (parentGroup) {
+      childUnitIdsByGroup.get(parentGroup.id)?.push(unit.id)
+    }
+  }
+
+  const getUnitParentAnchorWithinGroup = (group: FamilyGroup, unit: FamilyUnit) => {
+    const anchors = unit.parentIds
+      .map((parentId) => {
+        const memberIndex = group.members.findIndex((member) => member.id === parentId)
+        if (memberIndex === -1) {
+          return null
+        }
+
+        return memberIndex * (CARD_WIDTH + SPOUSE_GAP) + CARD_WIDTH / 2
+      })
+      .filter((anchor): anchor is number => anchor !== null)
+
+    if (anchors.length === 0) {
+      return unit.sortValue
+    }
+
+    return anchors.reduce((sum, anchor) => sum + anchor, 0) / anchors.length
+  }
+
+  for (const group of groups.values()) {
+    const unitIds = childUnitIdsByGroup.get(group.id) ?? []
+    unitIds.sort((leftId, rightId) => {
+      const leftUnit = units.get(leftId)
+      const rightUnit = units.get(rightId)
+      if (!leftUnit || !rightUnit) {
+        return 0
+      }
+
+      const leftAnchor = getUnitParentAnchorWithinGroup(group, leftUnit)
+      const rightAnchor = getUnitParentAnchorWithinGroup(group, rightUnit)
       if (leftAnchor !== rightAnchor) {
         return leftAnchor - rightAnchor
       }
 
-      return left.sortValue - right.sortValue
+      return leftUnit.sortValue - rightUnit.sortValue
     })
   }
 
-  const placeRowTopDown = (depth: number) => {
-    const row = [...(groupsByDepth.get(depth) ?? [])]
-    sortRowByParentAnchor(row)
+  const groupSubtreeWidthMemo = new Map<string, number>()
+  const unitSubtreeWidthMemo = new Map<string, number>()
 
-    let cursorX = PADDING_X
-    let clusterStart = 0
+  const measureGroupSubtreeWidth = (groupId: string): number => {
+    if (groupSubtreeWidthMemo.has(groupId)) {
+      return groupSubtreeWidthMemo.get(groupId) ?? CARD_WIDTH
+    }
 
-    while (clusterStart < row.length) {
-      const seed = row[clusterStart]
-      const signature =
-        seed.parentIds.length === 0
-          ? `root:${seed.id}`
-          : seed.parentIds.join('|')
-      let clusterEnd = clusterStart + 1
+    const group = groups.get(groupId)
+    if (!group) {
+      return CARD_WIDTH
+    }
 
-      while (clusterEnd < row.length) {
-        const candidate = row[clusterEnd]
-        const candidateSignature =
-          candidate.parentIds.length === 0
-            ? `root:${candidate.id}`
-            : candidate.parentIds.join('|')
+    const childUnitIds = childUnitIdsByGroup.get(group.id) ?? []
+    const childUnitsWidth =
+      childUnitIds.reduce((sum, unitId) => sum + measureUnitSubtreeWidth(unitId), 0) +
+      Math.max(0, childUnitIds.length - 1) * GROUP_GAP
+    const subtreeWidth = Math.max(group.width, childUnitsWidth)
 
-        if (candidateSignature !== signature) {
-          break
+    groupSubtreeWidthMemo.set(groupId, subtreeWidth)
+    return subtreeWidth
+  }
+
+  const measureUnitSubtreeWidth = (unitId: string): number => {
+    if (unitSubtreeWidthMemo.has(unitId)) {
+      return unitSubtreeWidthMemo.get(unitId) ?? CARD_WIDTH
+    }
+
+    const unit = units.get(unitId)
+    if (!unit) {
+      return CARD_WIDTH
+    }
+
+    const childrenWidth =
+      unit.groups.reduce((sum, group) => sum + measureGroupSubtreeWidth(group.id), 0) +
+      Math.max(0, unit.groups.length - 1) * GROUP_GAP
+    const subtreeWidth = Math.max(unit.width, childrenWidth)
+
+    unit.subtreeWidth = subtreeWidth
+    unitSubtreeWidthMemo.set(unitId, subtreeWidth)
+    return subtreeWidth
+  }
+
+  const getChildAnchorXsForGroup = (group: FamilyGroup) => {
+    const unitIds = childUnitIdsByGroup.get(group.id) ?? []
+
+    return unitIds
+      .flatMap((unitId) => {
+        const unit = units.get(unitId)
+        if (!unit) {
+          return []
         }
-        clusterEnd += 1
+
+        return unit.groups.flatMap((childGroup) =>
+          childGroup.members
+            .filter((member) =>
+              sameIds(getParentIdsForChild(member.id, parentsByChild), unit.parentIds),
+            )
+            .map((member) => getPersonCenterX(member.id))
+            .filter((centerX): centerX is number => centerX !== null),
+        )
+      })
+      .sort((left, right) => left - right)
+  }
+
+  const placeGroupSubtree = (groupId: string, boxLeft: number): number => {
+    const group = groups.get(groupId)
+    if (!group) {
+      return boxLeft
+    }
+
+    const subtreeWidth = measureGroupSubtreeWidth(groupId)
+    const childUnitIds = childUnitIdsByGroup.get(group.id) ?? []
+
+    if (childUnitIds.length > 0) {
+      const childUnitsWidth =
+        childUnitIds.reduce((sum, unitId) => sum + measureUnitSubtreeWidth(unitId), 0) +
+        Math.max(0, childUnitIds.length - 1) * GROUP_GAP
+      let childCursorX = boxLeft + (subtreeWidth - childUnitsWidth) / 2
+
+      for (const unitId of childUnitIds) {
+        placeUnitSubtree(unitId, childCursorX)
+        childCursorX += measureUnitSubtreeWidth(unitId) + GROUP_GAP
       }
+    }
 
-      const cluster = row.slice(clusterStart, clusterEnd)
-      const clusterWidth =
-        cluster.reduce((sum, group) => sum + group.width, 0) +
-        Math.max(0, cluster.length - 1) * GROUP_GAP
-      const parentAnchor =
-        seed.parentIds.length === 0
-          ? null
-          : getParentAnchorX(seed.parentIds)
+    const childAnchorXs = getChildAnchorXsForGroup(group)
+    const desiredCenter =
+      childAnchorXs.length === 0
+        ? boxLeft + subtreeWidth / 2
+        : (childAnchorXs[0] + childAnchorXs[childAnchorXs.length - 1]) / 2
 
-      const desiredClusterX =
-        parentAnchor === null ? cursorX : parentAnchor - clusterWidth / 2
-      let clusterX =
-        clusterStart === 0 ? desiredClusterX : Math.max(cursorX, desiredClusterX)
+    group.x = desiredCenter - group.width / 2
+    group.centerX = group.x + group.width / 2
+    return group.x
+  }
 
-      for (const group of cluster) {
-        group.x = clusterX
-        group.centerX = group.x + group.width / 2
-        clusterX += group.width + GROUP_GAP
-      }
+  const placeUnitSubtree = (unitId: string, boxLeft: number) => {
+    const unit = units.get(unitId)
+    if (!unit) {
+      return
+    }
 
-      cursorX = clusterX
-      clusterStart = clusterEnd
+    const subtreeWidth = measureUnitSubtreeWidth(unitId)
+    const groupsWidth =
+      unit.groups.reduce((sum, group) => sum + measureGroupSubtreeWidth(group.id), 0) +
+      Math.max(0, unit.groups.length - 1) * GROUP_GAP
+    let groupCursorX = boxLeft + (subtreeWidth - groupsWidth) / 2
+
+    for (const group of unit.groups) {
+      placeGroupSubtree(group.id, groupCursorX)
+      groupCursorX += measureGroupSubtreeWidth(group.id) + GROUP_GAP
     }
   }
 
-  const placeRowBottomUp = (depth: number) => {
-    const row = [...(groupsByDepth.get(depth) ?? [])].sort((left, right) => left.x - right.x)
-    let cursorX = PADDING_X
+  const rootGroups = [...groups.values()]
+    .filter((group) => group.parentIds.length === 0)
+    .sort((left, right) => left.sortValue - right.sortValue)
 
-    for (const group of row) {
-      const childAnchorXs = getChildAnchorXsForGroup(group)
-      const desiredCenter =
-        childAnchorXs.length === 0
-          ? group.centerX
-          : (childAnchorXs[0] + childAnchorXs[childAnchorXs.length - 1]) / 2
-      const desiredX = desiredCenter - group.width / 2
-
-      group.x = Math.max(cursorX, desiredX)
-      group.centerX = group.x + group.width / 2
-      cursorX = group.x + group.width + GROUP_GAP
-    }
-  }
-
-  for (let depth = 0; depth <= maxDepth; depth += 1) {
-    placeRowTopDown(depth)
-  }
-
-  // Alternate parent and child anchoring so deep descendants follow updated ancestors.
-  for (let pass = 0; pass < LAYOUT_RELAX_PASSES; pass += 1) {
-    for (let depth = maxDepth - 1; depth >= 0; depth -= 1) {
-      placeRowBottomUp(depth)
-    }
-
-    for (let depth = 1; depth <= maxDepth; depth += 1) {
-      placeRowTopDown(depth)
-    }
+  let rootCursorX = PADDING_X
+  for (const rootGroup of rootGroups) {
+    placeGroupSubtree(rootGroup.id, rootCursorX)
+    rootCursorX += measureGroupSubtreeWidth(rootGroup.id) + GROUP_GAP
   }
 
   const minGroupX = Math.min(...Array.from(groups.values()).map((group) => group.x))
