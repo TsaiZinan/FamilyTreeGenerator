@@ -89,6 +89,7 @@ const SPOUSE_GAP = 30
 const GROUP_GAP = 90
 const PADDING_X = 120
 const PADDING_Y = 160
+const LAYOUT_RELAX_PASSES = 3
 
 const createId = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 10)}`
@@ -688,8 +689,7 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     groupsByDepth.set(group.depth, row)
   }
 
-  for (let depth = 0; depth <= maxDepth; depth += 1) {
-    const row = groupsByDepth.get(depth) ?? []
+  const sortRowByParentAnchor = (row: FamilyGroup[]) => {
     row.sort((left, right) => {
       const leftAnchor =
         left.parentIds.length === 0
@@ -707,6 +707,11 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
 
       return left.sortValue - right.sortValue
     })
+  }
+
+  const placeRowTopDown = (depth: number) => {
+    const row = [...(groupsByDepth.get(depth) ?? [])]
+    sortRowByParentAnchor(row)
 
     let cursorX = PADDING_X
     let clusterStart = 0
@@ -757,7 +762,7 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     }
   }
 
-  for (let depth = maxDepth - 1; depth >= 0; depth -= 1) {
+  const placeRowBottomUp = (depth: number) => {
     const row = [...(groupsByDepth.get(depth) ?? [])].sort((left, right) => left.x - right.x)
     let cursorX = PADDING_X
 
@@ -781,6 +786,21 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
       group.x = Math.max(cursorX, desiredX)
       group.centerX = group.x + group.width / 2
       cursorX = group.x + group.width + GROUP_GAP
+    }
+  }
+
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    placeRowTopDown(depth)
+  }
+
+  // Alternate parent and child anchoring so deep descendants follow updated ancestors.
+  for (let pass = 0; pass < LAYOUT_RELAX_PASSES; pass += 1) {
+    for (let depth = maxDepth - 1; depth >= 0; depth -= 1) {
+      placeRowBottomUp(depth)
+    }
+
+    for (let depth = 1; depth <= maxDepth; depth += 1) {
+      placeRowTopDown(depth)
     }
   }
 
