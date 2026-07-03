@@ -159,6 +159,8 @@ const getUiCopy = (language: UiLanguage) =>
         personImageAlt: 'Person portrait',
         photoPlaceholder: 'Click to upload portrait',
         deletePerson: 'Delete person',
+        cancel: 'Cancel',
+        confirm: 'Confirm',
         namePlaceholder: 'Name',
         birthPlaceholder: 'Birth date',
         cardTip: 'Click portrait to upload an image, drag onto related cards to reorder',
@@ -210,6 +212,8 @@ const getUiCopy = (language: UiLanguage) =>
         personImageAlt: '人物图片',
         photoPlaceholder: '点击上传头像',
         deletePerson: '删除人物',
+        cancel: '取消',
+        confirm: '确认',
         namePlaceholder: '姓名',
         birthPlaceholder: '生辰日期',
         cardTip: '点击头像上传图片，拖到同组卡片上可改顺序',
@@ -648,6 +652,83 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     }
   }
 
+  const getDirectChildGroups = (groupId: string) =>
+    [...(childGroupIdsByGroup.get(groupId) ?? [])]
+      .map((childGroupId) => groups.get(childGroupId))
+      .filter((childGroup): childGroup is FamilyGroup => childGroup !== undefined)
+      .sort((left, right) => left.x - right.x)
+
+  const createSubtreeMetrics = () => {
+    const subtreeBoundsCache = new Map<string, { minX: number; maxX: number }>()
+    const descendantBoundsCache = new Map<string, { minX: number; maxX: number } | null>()
+
+    const getSubtreeBounds = (groupId: string): { minX: number; maxX: number } => {
+      const cached = subtreeBoundsCache.get(groupId)
+      if (cached) {
+        return cached
+      }
+
+      const group = groups.get(groupId)
+      if (!group) {
+        return { minX: 0, maxX: 0 }
+      }
+
+      let minX = group.x
+      let maxX = group.x + group.width
+
+      for (const childGroup of getDirectChildGroups(groupId)) {
+        const childBounds = getSubtreeBounds(childGroup.id)
+        minX = Math.min(minX, childBounds.minX)
+        maxX = Math.max(maxX, childBounds.maxX)
+      }
+
+      const bounds = { minX, maxX }
+      subtreeBoundsCache.set(groupId, bounds)
+      return bounds
+    }
+
+    const getDescendantBounds = (groupId: string) => {
+      if (descendantBoundsCache.has(groupId)) {
+        return descendantBoundsCache.get(groupId) ?? null
+      }
+
+      const childGroups = getDirectChildGroups(groupId)
+      if (childGroups.length === 0) {
+        descendantBoundsCache.set(groupId, null)
+        return null
+      }
+
+      let minX = Number.POSITIVE_INFINITY
+      let maxX = Number.NEGATIVE_INFINITY
+
+      for (const childGroup of childGroups) {
+        const childBounds = getSubtreeBounds(childGroup.id)
+        minX = Math.min(minX, childBounds.minX)
+        maxX = Math.max(maxX, childBounds.maxX)
+      }
+
+      const bounds = { minX, maxX }
+      descendantBoundsCache.set(groupId, bounds)
+      return bounds
+    }
+
+    const getFamilyFootprintWidth = (groupId: string) => {
+      const group = groups.get(groupId)
+      if (!group) {
+        return CARD_WIDTH
+      }
+
+      const descendantBounds = getDescendantBounds(groupId)
+      if (!descendantBounds) {
+        return group.width
+      }
+
+      return Math.max(group.width, descendantBounds.maxX - descendantBounds.minX)
+    }
+
+    return { getDescendantBounds, getFamilyFootprintWidth }
+  }
+
   const getPersonCenterX = (personId: string) => {
     const groupId = groupIdByPerson.get(personId)
     if (!groupId) {
@@ -709,9 +790,10 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     })
   }
 
-  const placeRowTopDown = (depth: number) => {
+  const placeRowTopDown = (depth: number, useFamilyFootprint = false) => {
     const row = [...(groupsByDepth.get(depth) ?? [])]
     sortRowByParentAnchor(row)
+    const subtreeMetrics = useFamilyFootprint ? createSubtreeMetrics() : null
 
     let cursorX = PADDING_X
     let clusterStart = 0
@@ -739,7 +821,12 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
 
       const cluster = row.slice(clusterStart, clusterEnd)
       const clusterWidth =
-        cluster.reduce((sum, group) => sum + group.width, 0) +
+        cluster.reduce(
+          (sum, group) =>
+            sum +
+            (subtreeMetrics?.getFamilyFootprintWidth(group.id) ?? group.width),
+          0,
+        ) +
         Math.max(0, cluster.length - 1) * GROUP_GAP
       const parentAnchor =
         seed.parentIds.length === 0
@@ -752,9 +839,10 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
         clusterStart === 0 ? desiredClusterX : Math.max(cursorX, desiredClusterX)
 
       for (const group of cluster) {
-        group.x = clusterX
+        const footprintWidth = subtreeMetrics?.getFamilyFootprintWidth(group.id) ?? group.width
+        group.x = clusterX + (footprintWidth - group.width) / 2
         group.centerX = group.x + group.width / 2
-        clusterX += group.width + GROUP_GAP
+        clusterX += footprintWidth + GROUP_GAP
       }
 
       cursorX = clusterX
@@ -764,28 +852,21 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
 
   const placeRowBottomUp = (depth: number) => {
     const row = [...(groupsByDepth.get(depth) ?? [])].sort((left, right) => left.x - right.x)
+    const subtreeMetrics = createSubtreeMetrics()
     let cursorX = PADDING_X
 
     for (const group of row) {
-      const childGroups = [...(childGroupIdsByGroup.get(group.id) ?? [])]
-        .map((childGroupId) => groups.get(childGroupId))
-        .filter(
-          (childGroup): childGroup is FamilyGroup =>
-            childGroup !== undefined && childGroup.depth === group.depth + 1,
-        )
-        .sort((left, right) => left.x - right.x)
-
+      const descendantBounds = subtreeMetrics.getDescendantBounds(group.id)
+      const occupiedWidth = subtreeMetrics.getFamilyFootprintWidth(group.id)
       const desiredCenter =
-        childGroups.length === 0
+        descendantBounds === null
           ? group.centerX
-          : (Math.min(...childGroups.map((childGroup) => childGroup.x)) +
-              Math.max(...childGroups.map((childGroup) => childGroup.x + childGroup.width))) /
-            2
-      const desiredX = desiredCenter - group.width / 2
+          : (descendantBounds.minX + descendantBounds.maxX) / 2
+      const occupiedLeft = Math.max(cursorX, desiredCenter - occupiedWidth / 2)
 
-      group.x = Math.max(cursorX, desiredX)
+      group.x = occupiedLeft + (occupiedWidth - group.width) / 2
       group.centerX = group.x + group.width / 2
-      cursorX = group.x + group.width + GROUP_GAP
+      cursorX = occupiedLeft + occupiedWidth + GROUP_GAP
     }
   }
 
@@ -800,7 +881,7 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     }
 
     for (let depth = 1; depth <= maxDepth; depth += 1) {
-      placeRowTopDown(depth)
+      placeRowTopDown(depth, true)
     }
   }
 
@@ -883,7 +964,7 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
       const parentNode = parentNodes[0]
       const parentCenterX = parentNode.x + CARD_WIDTH / 2
       const parentBottomY = parentNode.y + CARD_HEIGHT
-      const bridgeY = parentBottomY + Math.max(26, (childTopY - parentBottomY) / 2)
+      const bridgeY = Math.max(parentBottomY + 30, childTopY - 28)
 
       segments.push({
         id: `${person.id}-p-top`,
@@ -995,6 +1076,7 @@ function App() {
   const [isExportingImage, setIsExportingImage] = useState(false)
   const [draggedPersonId, setDraggedPersonId] = useState<string | null>(null)
   const [dropTargetPersonId, setDropTargetPersonId] = useState<string | null>(null)
+  const [pendingDeletePersonId, setPendingDeletePersonId] = useState<string | null>(null)
   const [canUndo, setCanUndo] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const treeRef = useRef<HTMLDivElement | null>(null)
@@ -1094,6 +1176,7 @@ function App() {
     setDraggedPersonId(null)
     setDropTargetPersonId(null)
     setPendingImagePersonId(null)
+    setPendingDeletePersonId(null)
     setProject({
       ...snapshotProject(previous),
       updatedAt: new Date().toISOString(),
@@ -1209,7 +1292,7 @@ function App() {
     setMessage(copy.childAdded)
   }
 
-  const deletePerson = (personId: string) => {
+  const requestDeletePerson = (personId: string) => {
     const person = personMap.get(personId)
     if (!person) {
       return
@@ -1220,10 +1303,16 @@ function App() {
       return
     }
 
-    if (!window.confirm(copy.confirmDelete(person.name || getDefaultPersonName(uiLanguage)))) {
+    setOpenAddMenuPersonId(null)
+    setPendingDeletePersonId(personId)
+  }
+
+  const confirmDeletePerson = () => {
+    if (!pendingDeletePersonId) {
       return
     }
 
+    const personId = pendingDeletePersonId
     updateProject((current) => {
       const people = current.people.filter((item) => item.id !== personId)
       const relations = current.relations.filter(
@@ -1239,6 +1328,7 @@ function App() {
         selectedPersonId: fallbackSelected,
       }
     })
+    setPendingDeletePersonId(null)
     setMessage(copy.personDeleted)
   }
 
@@ -1422,6 +1512,10 @@ function App() {
     }))
   }
 
+  const pendingDeletePerson = pendingDeletePersonId
+    ? personMap.get(pendingDeletePersonId) ?? null
+    : null
+
   return (
     <div className="canvas-shell" onClick={() => setOpenAddMenuPersonId(null)}>
       <input
@@ -1493,6 +1587,40 @@ function App() {
       </div>
 
       <div className="status-chip">{message}</div>
+
+      {pendingDeletePerson ? (
+        <div
+          className="confirm-overlay no-export"
+          onClick={() => setPendingDeletePersonId(null)}
+        >
+          <div
+            className="confirm-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-message">
+              {copy.confirmDelete(
+                pendingDeletePerson.name || getDefaultPersonName(uiLanguage),
+              )}
+            </div>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="confirm-button"
+                onClick={() => setPendingDeletePersonId(null)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                type="button"
+                className="confirm-button confirm-button-danger"
+                onClick={confirmDeletePerson}
+              >
+                {copy.confirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div ref={viewportRef} className="canvas-viewport">
         <div className="tree-stage-shell">
@@ -1640,7 +1768,7 @@ function App() {
                     type="button"
                     className="delete-button no-export"
                     title={copy.deletePerson}
-                    onClick={() => deletePerson(node.person.id)}
+                    onClick={() => requestDeletePerson(node.person.id)}
                   >
                     ×
                   </button>
