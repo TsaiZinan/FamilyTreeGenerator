@@ -9,6 +9,7 @@ import {
 import { toPng } from 'html-to-image'
 
 type RelationType = 'spouse' | 'parentChild'
+type UiLanguage = 'zh-CN' | 'en'
 
 type Person = {
   id: string
@@ -80,6 +81,7 @@ type ImportableProject = Partial<FamilyProject> & {
 }
 
 const STORAGE_KEY = 'family-tree-editor-project'
+const UI_LANGUAGE_KEY = 'family-tree-editor-ui-language'
 const CARD_WIDTH = 224
 const CARD_HEIGHT = 196
 const LEVEL_GAP = 176
@@ -93,6 +95,127 @@ const createId = (prefix: string) =>
 
 const MAX_UNDO_STEPS = 50
 
+const getStoredLanguage = (): UiLanguage => {
+  if (typeof window === 'undefined') {
+    return 'zh-CN'
+  }
+
+  return window.localStorage.getItem(UI_LANGUAGE_KEY) === 'en' ? 'en' : 'zh-CN'
+}
+
+const getDefaultPersonName = (language: UiLanguage) =>
+  language === 'en' ? 'Unnamed Person' : '未命名成员'
+
+const getDefaultProjectTitle = (language: UiLanguage) =>
+  language === 'en' ? 'Family Tree' : '家族族谱'
+
+const getUiCopy = (language: UiLanguage) =>
+  language === 'en'
+    ? {
+        locale: 'en-US',
+        savedToLocal: 'Saved locally',
+        autoSaved: (timestamp: string) => `Auto-saved ${timestamp}`,
+        stageCaption: 'FAMILY TREE',
+        titlePlaceholder: 'Enter a family tree title',
+        defaultTreeTitle: getDefaultProjectTitle(language),
+        undo: 'Undo',
+        newProject: 'New',
+        exportFile: 'Export File',
+        importFile: 'Import File',
+        saveImage: 'Save Image',
+        clearCache: 'Clear Cache',
+        noUndo: 'Nothing to undo',
+        undoDone: 'Undid the last action',
+        spouseAdded: 'Added a spouse',
+        childAdded: 'Added a child',
+        keepAtLeastOne: 'Keep at least one person card',
+        confirmDelete: (name: string) => `Delete "${name}"?`,
+        personDeleted: 'Deleted the person',
+        fileExported: 'Exported the file',
+        fileImported: (name: string) => `Imported ${name}`,
+        importInvalid: 'Import failed: invalid file format',
+        importReadError: 'Import failed: could not read the file',
+        imageUpdated: 'Updated the portrait',
+        imageReadError: 'Failed to read the image',
+        imageExported: 'Exported the family tree image',
+        imageExportFailed: 'Failed to export the image. Please try again.',
+        confirmNew: 'Create a new family tree? The current content will be replaced.',
+        newCreated: 'Created a new family tree',
+        confirmClear:
+          'Clear browser cache and reset the current family tree?',
+        cacheCleared: 'Cleared the local cache',
+        spouseOrderAdjusted: 'Adjusted spouse order',
+        childOrderAdjusted: 'Adjusted child order',
+        dragRestriction:
+          'Only cards in the same spouse group or sibling family can be reordered',
+        addMember: 'Add person',
+        leftSpouse: 'Add spouse to left',
+        rightSpouse: 'Add spouse to right',
+        addChild: 'Add child',
+        addChildWithSpouse: (name: string, index: number) =>
+          `Add child with ${name.trim() || `Spouse ${index + 1}`}`,
+        uploadImage: 'Upload portrait',
+        personImageAlt: 'Person portrait',
+        photoPlaceholder: 'Click to upload portrait',
+        deletePerson: 'Delete person',
+        namePlaceholder: 'Name',
+        birthPlaceholder: 'Birth date',
+        cardTip: 'Click portrait to upload an image, drag onto related cards to reorder',
+        languageZh: '中文',
+        languageEn: 'EN',
+      }
+    : {
+        locale: 'zh-CN',
+        savedToLocal: '已自动保存到本地',
+        autoSaved: (timestamp: string) => `已自动保存 ${timestamp}`,
+        stageCaption: '族谱画布',
+        titlePlaceholder: '请输入族谱标题',
+        defaultTreeTitle: getDefaultProjectTitle(language),
+        undo: '撤回上一步',
+        newProject: '新建',
+        exportFile: '导出文件',
+        importFile: '导入文件',
+        saveImage: '保存图片',
+        clearCache: '清空缓存',
+        noUndo: '没有可撤回的操作',
+        undoDone: '已撤回上一步',
+        spouseAdded: '已新增配偶',
+        childAdded: '已新增子辈',
+        keepAtLeastOne: '至少保留一张人物卡片',
+        confirmDelete: (name: string) => `确定删除“${name}”吗？`,
+        personDeleted: '已删除人物',
+        fileExported: '已导出文件',
+        fileImported: (name: string) => `已导入 ${name}`,
+        importInvalid: '导入失败：文件格式不符合要求',
+        importReadError: '导入失败：无法读取文件',
+        imageUpdated: '已更新人物图片',
+        imageReadError: '图片读取失败',
+        imageExported: '已导出族谱图片',
+        imageExportFailed: '导出图片失败，请稍后重试',
+        confirmNew: '确定新建族谱吗？当前内容会被替换。',
+        newCreated: '已新建族谱',
+        confirmClear: '确定清空浏览器本地缓存并重置当前族谱吗？',
+        cacheCleared: '已清空本地缓存',
+        spouseOrderAdjusted: '已调整伴侣顺序',
+        childOrderAdjusted: '已调整子辈顺序',
+        dragRestriction: '只能在同一组伴侣或同一家子辈中拖动排序',
+        addMember: '添加成员',
+        leftSpouse: '左侧伴侣',
+        rightSpouse: '右侧伴侣',
+        addChild: '添加子辈',
+        addChildWithSpouse: (name: string, index: number) =>
+          `与${name.trim() || `配偶${index + 1}`}添加子辈`,
+        uploadImage: '上传人物图片',
+        personImageAlt: '人物图片',
+        photoPlaceholder: '点击上传头像',
+        deletePerson: '删除人物',
+        namePlaceholder: '姓名',
+        birthPlaceholder: '生辰日期',
+        cardTip: '点击头像上传图片，拖到同组卡片上可改顺序',
+        languageZh: '中文',
+        languageEn: 'EN',
+      }
+
 const comparePeople = (left: Person, right: Person) =>
   left.sortKey - right.sortKey || left.createdAt - right.createdAt
 
@@ -103,7 +226,7 @@ const snapshotProject = (project: FamilyProject): FamilyProject => ({
 })
 
 const createPerson = (
-  name = '未命名成员',
+  name = getDefaultPersonName('zh-CN'),
   sortKey = Date.now() + Math.random() * 1000,
 ): Person => ({
   id: createId('person'),
@@ -115,15 +238,16 @@ const createPerson = (
 
 const unique = <T,>(items: T[]) => Array.from(new Set(items))
 
-const createInitialProject = (): FamilyProject => {
-  const root = createPerson('未命名成员', 100)
-  const spouse = createPerson('未命名成员', 200)
-  const childA = createPerson('未命名成员', 100)
-  const childB = createPerson('未命名成员', 200)
+const createInitialProject = (language: UiLanguage = 'zh-CN'): FamilyProject => {
+  const defaultName = getDefaultPersonName(language)
+  const root = createPerson(defaultName, 100)
+  const spouse = createPerson(defaultName, 200)
+  const childA = createPerson(defaultName, 100)
+  const childB = createPerson(defaultName, 200)
 
   return {
     version: 1,
-    title: '家族族谱',
+    title: getDefaultProjectTitle(language),
     people: [root, spouse, childA, childB],
     relations: [
       {
@@ -232,7 +356,10 @@ const normalizeProject = (input: unknown): FamilyProject | null => {
 
   return {
     version: 1,
-    title: typeof candidate.title === 'string' ? candidate.title : '家族族谱',
+    title:
+      typeof candidate.title === 'string'
+        ? candidate.title
+        : getDefaultProjectTitle('zh-CN'),
     people,
     relations,
     selectedPersonId,
@@ -506,6 +633,20 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
     group.parentIds = parentIds
   }
 
+  const childGroupIdsByGroup = new Map<string, Set<string>>()
+  for (const group of groups.values()) {
+    childGroupIdsByGroup.set(group.id, new Set())
+  }
+
+  for (const group of groups.values()) {
+    for (const parentId of group.parentIds) {
+      const parentGroupId = groupIdByPerson.get(parentId)
+      if (parentGroupId && parentGroupId !== group.id) {
+        childGroupIdsByGroup.get(parentGroupId)?.add(group.id)
+      }
+    }
+  }
+
   const getPersonCenterX = (personId: string) => {
     const groupId = groupIdByPerson.get(personId)
     if (!groupId) {
@@ -613,6 +754,33 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
 
       cursorX = clusterX
       clusterStart = clusterEnd
+    }
+  }
+
+  for (let depth = maxDepth - 1; depth >= 0; depth -= 1) {
+    const row = [...(groupsByDepth.get(depth) ?? [])].sort((left, right) => left.x - right.x)
+    let cursorX = PADDING_X
+
+    for (const group of row) {
+      const childGroups = [...(childGroupIdsByGroup.get(group.id) ?? [])]
+        .map((childGroupId) => groups.get(childGroupId))
+        .filter(
+          (childGroup): childGroup is FamilyGroup =>
+            childGroup !== undefined && childGroup.depth === group.depth + 1,
+        )
+        .sort((left, right) => left.x - right.x)
+
+      const desiredCenter =
+        childGroups.length === 0
+          ? group.centerX
+          : (Math.min(...childGroups.map((childGroup) => childGroup.x)) +
+              Math.max(...childGroups.map((childGroup) => childGroup.x + childGroup.width))) /
+            2
+      const desiredX = desiredCenter - group.width / 2
+
+      group.x = Math.max(cursorX, desiredX)
+      group.centerX = group.x + group.width / 2
+      cursorX = group.x + group.width + GROUP_GAP
     }
   }
 
@@ -785,19 +953,21 @@ const buildLayout = (project: FamilyProject): LayoutResult => {
 }
 
 function App() {
+  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(() => getStoredLanguage())
+  const copy = useMemo(() => getUiCopy(uiLanguage), [uiLanguage])
   const [project, setProject] = useState<FamilyProject>(() => {
     const cached = localStorage.getItem(STORAGE_KEY)
     if (!cached) {
-      return createInitialProject()
+      return createInitialProject(getStoredLanguage())
     }
 
     try {
-      return normalizeProject(JSON.parse(cached)) ?? createInitialProject()
+      return normalizeProject(JSON.parse(cached)) ?? createInitialProject(getStoredLanguage())
     } catch {
-      return createInitialProject()
+      return createInitialProject(getStoredLanguage())
     }
   })
-  const [message, setMessage] = useState('已自动保存到本地')
+  const [message, setMessage] = useState(() => getUiCopy(getStoredLanguage()).savedToLocal)
   const [pendingImagePersonId, setPendingImagePersonId] = useState<string | null>(
     null,
   )
@@ -815,13 +985,17 @@ function App() {
   const undoStackRef = useRef<FamilyProject[]>([])
 
   useEffect(() => {
+    localStorage.setItem(UI_LANGUAGE_KEY, uiLanguage)
+  }, [uiLanguage])
+
+  useEffect(() => {
     projectRef.current = project
   }, [project])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(project))
-    setMessage(`已自动保存 ${new Date().toLocaleString('zh-CN')}`)
-  }, [project])
+    setMessage(copy.autoSaved(new Date().toLocaleString(copy.locale)))
+  }, [project, copy])
 
   const layout = useMemo(() => buildLayout(project), [project])
   const personMap = useMemo(
@@ -890,7 +1064,7 @@ function App() {
   const handleUndo = () => {
     const previous = undoStackRef.current[undoStackRef.current.length - 1]
     if (!previous) {
-      setMessage('没有可撤回的操作')
+      setMessage(copy.noUndo)
       return
     }
 
@@ -904,7 +1078,7 @@ function App() {
       ...snapshotProject(previous),
       updatedAt: new Date().toISOString(),
     })
-    setMessage('已撤回上一步')
+    setMessage(copy.undoDone)
   }
 
   const updatePerson = (personId: string, patch: Partial<Person>) => {
@@ -959,7 +1133,7 @@ function App() {
             ? before + 100
             : (before + after) / 2
 
-    const spouse = createPerson('未命名成员', sortKey)
+    const spouse = createPerson(getDefaultPersonName(uiLanguage), sortKey)
     updateProject((current) => ({
       ...current,
       people: [...current.people, spouse],
@@ -970,7 +1144,7 @@ function App() {
       }),
       selectedPersonId: spouse.id,
     }))
-    setMessage('已新增配偶')
+    setMessage(copy.spouseAdded)
   }
 
   const addChild = (parentIds: string[]) => {
@@ -991,7 +1165,7 @@ function App() {
     const lastSibling = siblingPeople[siblingPeople.length - 1]
 
     const child = createPerson(
-      '未命名成员',
+      getDefaultPersonName(uiLanguage),
       lastSibling ? lastSibling.sortKey + 100 : familyParents[0]?.sortKey ?? Date.now(),
     )
 
@@ -1012,7 +1186,7 @@ function App() {
         selectedPersonId: child.id,
       }
     })
-    setMessage('已新增子辈')
+    setMessage(copy.childAdded)
   }
 
   const deletePerson = (personId: string) => {
@@ -1022,11 +1196,11 @@ function App() {
     }
 
     if (project.people.length <= 1) {
-      setMessage('至少保留一张人物卡片')
+      setMessage(copy.keepAtLeastOne)
       return
     }
 
-    if (!window.confirm(`确定删除“${person.name || '未命名成员'}”吗？`)) {
+    if (!window.confirm(copy.confirmDelete(person.name || getDefaultPersonName(uiLanguage)))) {
       return
     }
 
@@ -1045,16 +1219,16 @@ function App() {
         selectedPersonId: fallbackSelected,
       }
     })
-    setMessage('已删除人物')
+    setMessage(copy.personDeleted)
   }
 
   const handleExportJson = () => {
     downloadFile(
-      `${project.title || '族谱'}.json`,
+      `${project.title || copy.defaultTreeTitle}.json`,
       JSON.stringify(project, null, 2),
       'application/json',
     )
-    setMessage('已导出文件')
+    setMessage(copy.fileExported)
   }
 
   const handleImportJson = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1067,14 +1241,14 @@ function App() {
       const text = await readFileAsText(file)
       const parsed = normalizeProject(JSON.parse(text))
       if (!parsed) {
-        setMessage('导入失败：JSON 格式不符合要求')
+        setMessage(copy.importInvalid)
         return
       }
 
       commitProject(parsed, { autoCenter: true })
-      setMessage(`已导入 ${file.name}`)
+      setMessage(copy.fileImported(file.name))
     } catch {
-      setMessage('导入失败：无法读取 JSON')
+      setMessage(copy.importReadError)
     } finally {
       event.target.value = ''
     }
@@ -1089,9 +1263,9 @@ function App() {
     try {
       const dataUrl = await readFileAsDataUrl(file)
       updatePerson(pendingImagePersonId, { imageDataUrl: dataUrl })
-      setMessage('已更新人物图片')
+      setMessage(copy.imageUpdated)
     } catch {
-      setMessage('图片读取失败')
+      setMessage(copy.imageReadError)
     } finally {
       event.target.value = ''
       setPendingImagePersonId(null)
@@ -1115,33 +1289,33 @@ function App() {
       })
       const link = document.createElement('a')
       link.href = dataUrl
-      link.download = `${project.title || '族谱'}.png`
+      link.download = `${project.title || copy.defaultTreeTitle}.png`
       link.click()
-      setMessage('已导出族谱图片')
+      setMessage(copy.imageExported)
     } catch {
-      setMessage('导出图片失败，请稍后重试')
+      setMessage(copy.imageExportFailed)
     } finally {
       setIsExportingImage(false)
     }
   }
 
   const handleNewProject = () => {
-    if (!window.confirm('确定新建族谱吗？当前内容会被替换。')) {
+    if (!window.confirm(copy.confirmNew)) {
       return
     }
 
-    commitProject(createInitialProject(), { autoCenter: true })
-    setMessage('已新建族谱')
+    commitProject(createInitialProject(uiLanguage), { autoCenter: true })
+    setMessage(copy.newCreated)
   }
 
   const handleClearLocalCache = () => {
-    if (!window.confirm('确定清空浏览器本地缓存并重置当前族谱吗？')) {
+    if (!window.confirm(copy.confirmClear)) {
       return
     }
 
     localStorage.removeItem(STORAGE_KEY)
-    commitProject(createInitialProject(), { autoCenter: true })
-    setMessage('已清空本地缓存')
+    commitProject(createInitialProject(uiLanguage), { autoCenter: true })
+    setMessage(copy.cacheCleared)
   }
 
   const startDrag = (event: DragEvent<HTMLDivElement>, personId: string) => {
@@ -1174,7 +1348,7 @@ function App() {
         ...current,
         people: reorderPeopleSubset(current.people, orderedIds),
       }))
-      setMessage('已调整配偶顺序')
+      setMessage(copy.spouseOrderAdjusted)
     } else if (draggedParents.length > 0 && sameIds(draggedParents, targetParents)) {
       const siblingUnits = getSiblingUnitIds(draggedParents)
       const siblingIds = siblingUnits.map((unit) => unit.anchorId)
@@ -1186,9 +1360,9 @@ function App() {
         ...current,
         people: reorderPeopleSubset(current.people, orderedIds),
       }))
-      setMessage('已调整子辈顺序')
+      setMessage(copy.childOrderAdjusted)
     } else {
-      setMessage('只能在同一组配偶或同一家子辈中拖动排序')
+      setMessage(copy.dragRestriction)
     }
 
     setDraggedPersonId(null)
@@ -1205,7 +1379,7 @@ function App() {
       return [
         {
           key: `child-solo-${personId}`,
-          label: '添加子辈',
+          label: copy.addChild,
           parentIds: [personId],
         },
       ]
@@ -1215,7 +1389,7 @@ function App() {
       return [
         {
           key: `child-family-${personId}-${spouses[0].id}`,
-          label: '添加子辈',
+          label: copy.addChild,
           parentIds: [personId, spouses[0].id],
         },
       ]
@@ -1223,7 +1397,7 @@ function App() {
 
     return spouses.map((spouse, index) => ({
       key: `child-family-${personId}-${spouse.id}`,
-      label: `与${spouse.name.trim() || `配偶${index + 1}`}添加子辈`,
+      label: copy.addChildWithSpouse(spouse.name, index),
       parentIds: [personId, spouse.id],
     }))
   }
@@ -1247,7 +1421,7 @@ function App() {
 
       <div className="floating-toolbar">
         <div className="title-stack">
-          <span className="title-caption">族谱画布</span>
+          <span className="title-caption">{copy.stageCaption}</span>
           <input
             className="title-input"
             value={project.title}
@@ -1257,27 +1431,43 @@ function App() {
                 title: event.target.value,
               }))
             }
-            placeholder="请输入族谱标题"
+            placeholder={copy.titlePlaceholder}
           />
         </div>
         <div className="toolbar-actions">
+          <div className="language-toggle">
+            <button
+              type="button"
+              className={`language-option ${uiLanguage === 'zh-CN' ? 'is-active' : ''}`}
+              onClick={() => setUiLanguage('zh-CN')}
+            >
+              {copy.languageZh}
+            </button>
+            <button
+              type="button"
+              className={`language-option ${uiLanguage === 'en' ? 'is-active' : ''}`}
+              onClick={() => setUiLanguage('en')}
+            >
+              {copy.languageEn}
+            </button>
+          </div>
           <button type="button" onClick={handleUndo} disabled={!canUndo}>
-            撤回上一步
+            {copy.undo}
           </button>
           <button type="button" onClick={handleNewProject}>
-            新建
+            {copy.newProject}
           </button>
           <button type="button" onClick={handleExportJson}>
-            导出文件
+            {copy.exportFile}
           </button>
           <button type="button" onClick={() => jsonInputRef.current?.click()}>
-            导入文件
+            {copy.importFile}
           </button>
           <button type="button" onClick={handleExportImage}>
-            保存图片
+            {copy.saveImage}
           </button>
           <button type="button" className="ghost-button" onClick={handleClearLocalCache}>
-            清空缓存
+            {copy.clearCache}
           </button>
         </div>
       </div>
@@ -1293,7 +1483,7 @@ function App() {
           >
           <div className="stage-title">
             <span className="stage-title-line" />
-            <h1>{project.title || '家族族谱'}</h1>
+            <h1>{project.title || copy.defaultTreeTitle}</h1>
             <span className="stage-title-line" />
           </div>
 
@@ -1361,7 +1551,7 @@ function App() {
                     <button
                       type="button"
                       className="add-menu-trigger"
-                      title="添加成员"
+                      title={copy.addMember}
                       onClick={() =>
                         setOpenAddMenuPersonId((current) =>
                           current === node.person.id ? null : node.person.id,
@@ -1380,7 +1570,7 @@ function App() {
                             setOpenAddMenuPersonId(null)
                           }}
                         >
-                          左侧伴侣
+                          {copy.leftSpouse}
                         </button>
                         <button
                           type="button"
@@ -1390,7 +1580,7 @@ function App() {
                             setOpenAddMenuPersonId(null)
                           }}
                         >
-                          右侧伴侣
+                          {copy.rightSpouse}
                         </button>
                         {childAddOptions.map((option) => (
                           <button
@@ -1411,22 +1601,25 @@ function App() {
                   <button
                     type="button"
                     className="photo-button"
-                    title="上传人物图片"
+                    title={copy.uploadImage}
                     onClick={() => {
                       setPendingImagePersonId(node.person.id)
                       imageInputRef.current?.click()
                     }}
                   >
                     {node.person.imageDataUrl ? (
-                      <img src={node.person.imageDataUrl} alt={node.person.name || '人物图片'} />
+                      <img
+                        src={node.person.imageDataUrl}
+                        alt={node.person.name || copy.personImageAlt}
+                      />
                     ) : (
-                      <span className="photo-placeholder">点击上传头像</span>
+                      <span className="photo-placeholder">{copy.photoPlaceholder}</span>
                     )}
                   </button>
                   <button
                     type="button"
                     className="delete-button no-export"
-                    title="删除人物"
+                    title={copy.deletePerson}
                     onClick={() => deletePerson(node.person.id)}
                   >
                     ×
@@ -1437,7 +1630,7 @@ function App() {
                   className="card-name"
                   value={node.person.name}
                   onChange={(event) => updatePerson(node.person.id, { name: event.target.value })}
-                  placeholder="姓名"
+                  placeholder={copy.namePlaceholder}
                 />
                 <input
                   className="card-birth"
@@ -1445,9 +1638,9 @@ function App() {
                   onChange={(event) =>
                     updatePerson(node.person.id, { birthDate: event.target.value })
                   }
-                  placeholder="生辰日期"
+                  placeholder={copy.birthPlaceholder}
                 />
-                <div className="card-tip no-export">点击头像上传图片，拖到同组卡片上可改顺序</div>
+                <div className="card-tip no-export">{copy.cardTip}</div>
               </div>
             )
           })}

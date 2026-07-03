@@ -96,6 +96,25 @@ input {
   justify-content: flex-end;
 }
 
+.language-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #111;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.toolbar-actions .language-option {
+  min-width: 54px;
+  padding: 6px 12px;
+}
+
+.toolbar-actions .language-option.is-active {
+  background: #111;
+  color: #fff;
+}
+
 .toolbar-actions button {
   padding: 10px 14px;
   border-radius: 999px;
