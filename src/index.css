@@ -1,0 +1,403 @@
+:root {
+  font-family:
+    "STSong", "Songti SC", "Noto Serif SC", "PingFang SC", serif;
+  color: #111;
+  background: #fff;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: #fff;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+}
+
+input {
+  outline: none;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.canvas-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.floating-toolbar {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  right: 18px;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #111;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.title-stack {
+  min-width: 260px;
+}
+
+.title-caption {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(17, 17, 17, 0.6);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+
+.title-input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #111;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.title-input::placeholder {
+  color: rgba(17, 17, 17, 0.35);
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.toolbar-actions button {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  border: 1px solid #111;
+  box-shadow: none;
+}
+
+.toolbar-actions button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.toolbar-actions button.ghost-button {
+  background: #111;
+  color: #fff;
+  border: 1px solid #111;
+  box-shadow: none;
+}
+
+.status-chip {
+  position: fixed;
+  right: 22px;
+  bottom: 20px;
+  z-index: 20;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  border: 1px solid #111;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+}
+
+.canvas-viewport {
+  min-height: 100vh;
+  overflow: auto;
+  padding: 96px 48px 48px;
+}
+
+.tree-stage-shell {
+  min-width: 100%;
+  min-height: calc(100vh - 144px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-stage {
+  position: relative;
+  flex: 0 0 auto;
+  background: #fff;
+}
+
+.tree-stage::before,
+.tree-stage::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border: 1px solid rgba(17, 17, 17, 0.18);
+  pointer-events: none;
+}
+
+.tree-stage::after {
+  inset: 28px;
+  border-color: rgba(17, 17, 17, 0.08);
+}
+
+.stage-title {
+  position: absolute;
+  top: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: #111;
+}
+
+.stage-title h1 {
+  margin: 0;
+  font-size: 32px;
+  letter-spacing: 0.1em;
+}
+
+.stage-title-line {
+  width: 72px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(17, 17, 17, 0.7), transparent);
+}
+
+.connectors {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.connector {
+  stroke-linecap: round;
+}
+
+.connector-lineage {
+  stroke: #111;
+  stroke-width: 2.5;
+}
+
+.connector-spouse {
+  stroke: #111;
+  stroke-width: 2.5;
+  stroke-dasharray: 9 7;
+}
+
+.person-card {
+  position: absolute;
+  width: 224px;
+  min-height: 196px;
+  padding: 16px 16px 14px;
+  border-radius: 22px;
+  background: #fff;
+  border: 2px solid #111;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.08);
+}
+
+.person-card.dragging {
+  opacity: 0.58;
+}
+
+.person-card.drop-target {
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.14);
+}
+
+.card-topbar {
+  display: grid;
+  grid-template-columns: auto 1fr 28px;
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.delete-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  border: 1px solid #111;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.delete-button {
+  font-size: 16px;
+}
+
+.add-menu-wrap {
+  position: relative;
+}
+
+.add-menu-trigger,
+.add-menu-item {
+  border: 1px solid #111;
+  background: #fff;
+  color: #111;
+}
+
+.add-menu-trigger {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.add-menu-panel {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: 6;
+  display: grid;
+  gap: 6px;
+  min-width: 156px;
+  padding: 8px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #111;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+}
+
+.add-menu-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.photo-button {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #fff;
+  color: #111;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 700;
+  border: 1px solid #111;
+}
+
+.photo-button img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-placeholder {
+  padding: 0 20px;
+  font-size: 18px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.card-name,
+.card-birth {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid rgba(17, 17, 17, 0.22);
+  background: transparent;
+  color: #111;
+}
+
+.card-name {
+  padding: 4px 2px 8px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.card-birth {
+  margin-top: 8px;
+  padding: 6px 2px 8px;
+  font-size: 14px;
+}
+
+.card-name::placeholder,
+.card-birth::placeholder {
+  color: rgba(17, 17, 17, 0.4);
+}
+
+.card-tip {
+  margin-top: 12px;
+  color: rgba(17, 17, 17, 0.58);
+  font-size: 12px;
+}
+
+.exporting-stage .no-export {
+  display: none !important;
+}
+
+.exporting-stage .person-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.exporting-stage .card-topbar {
+  width: 100%;
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.exporting-stage .photo-button {
+  width: 120px;
+}
+
+.exporting-stage .card-name,
+.exporting-stage .card-birth {
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .floating-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .title-input {
+    font-size: 22px;
+  }
+
+  .status-chip {
+    left: 16px;
+    right: 16px;
+    max-width: none;
+  }
+}

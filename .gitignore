@@ -1,0 +1,14 @@
+node_modules
+dist
+.DS_Store
+*.tsbuildinfo
+
+# Local private reference assets
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.xlsx
+~$*.xlsx
+debug-*.md
+蔡献木/
